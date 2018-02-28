@@ -30,7 +30,25 @@ def softmax_loss_naive(W, X, y, reg):
   # here, it is easy to run into numeric instability. Don't forget the        #
   # regularization!                                                           #
   #############################################################################
-  pass
+
+  num_obs = X.shape[0]
+
+  for obs in range(num_obs):
+    scores = np.exp(X[obs].dot(W))
+    correct_class = y[obs]
+    probs = scores / scores.sum()
+    l_i = -np.log(probs[correct_class])
+    loss += l_i
+
+    dscores = probs
+    dscores[correct_class] -= 1
+    dW += (X[obs][:, np.newaxis] * dscores)
+
+  loss /= num_obs
+  loss += reg * np.sum(W*W)
+  dW /= num_obs
+  dW += reg * W
+
   #############################################################################
   #                          END OF YOUR CODE                                 #
   #############################################################################
@@ -54,10 +72,26 @@ def softmax_loss_vectorized(W, X, y, reg):
   # here, it is easy to run into numeric instability. Don't forget the        #
   # regularization!                                                           #
   #############################################################################
-  pass
+
+  num_examples = X.shape[0]
+  scores = np.dot(X, W)
+  num_examples = X.shape[0]
+  exp_scores = np.exp(scores)
+  probs = exp_scores / np.sum(exp_scores, axis=1, keepdims=True)
+  correct_logprobs = -np.log(probs[range(num_examples),y])
+  data_loss = np.sum(correct_logprobs)/num_examples
+  reg_loss = 0.5*reg*np.sum(W*W)
+  loss = data_loss + reg_loss
+
+  dscores = probs
+  dscores[range(num_examples),y] -= 1
+  dscores /= num_examples
+  dW = np.dot(X.T, dscores)
+  db = np.sum(dscores, axis=0, keepdims=True)
+  dW += reg * W
+
   #############################################################################
   #                          END OF YOUR CODE                                 #
   #############################################################################
 
   return loss, dW
-
