@@ -2,6 +2,8 @@ import numpy as np
 from random import shuffle
 from past.builtins import xrange
 
+# pylint: disable=E1101
+
 def softmax_loss_naive(W, X, y, reg):
   """
   Softmax loss function, naive implementation (with loops)
@@ -87,7 +89,6 @@ def softmax_loss_vectorized(W, X, y, reg):
   dscores[range(num_examples),y] -= 1
   dscores /= num_examples
   dW = np.dot(X.T, dscores)
-  db = np.sum(dscores, axis=0, keepdims=True)
   dW += reg * W
 
   #############################################################################
