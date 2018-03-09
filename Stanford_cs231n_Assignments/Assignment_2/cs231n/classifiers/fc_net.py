@@ -47,7 +47,14 @@ class TwoLayerNet(object):
         # weights and biases using the keys 'W1' and 'b1' and second layer weights #
         # and biases using the keys 'W2' and 'b2'.                                 #
         ############################################################################
-        pass
+        
+        self.params['W1'] = np.random.normal(
+            scale=weight_scale, size=[input_dim, hidden_dim])
+        self.params['b1'] = np.zeros(hidden_dim)
+        self.params['W2'] = np.random.normal(
+            scale=weight_scale, size=[hidden_dim, num_classes])
+        self.params['b2'] = np.zeros(num_classes)
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -77,7 +84,14 @@ class TwoLayerNet(object):
         # TODO: Implement the forward pass for the two-layer net, computing the    #
         # class scores for X and storing them in the scores variable.              #
         ############################################################################
-        pass
+        W1 = self.params['W1']
+        W2 = self.params['W2']
+        b1 = self.params['b1']
+        b2 = self.params['b2']
+
+        hidden1 = X.dot(W1) + b1
+        hidden1_activation = np.maximum(0, hidden1)
+        scores = hidden1_activation.dot(W2) + b2
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -97,7 +111,36 @@ class TwoLayerNet(object):
         # automated tests, make sure that your L2 regularization includes a factor #
         # of 0.5 to simplify the expression for the gradient.                      #
         ############################################################################
-        pass
+
+        num_obs = X.shape[0]
+
+        scores_exp = np.exp(scores)
+        probs = scores_exp / scores_exp.sum(axis=1, keepdims=True)
+        loss = np.sum(-np.log(probs[range(num_obs), y]))
+
+        loss /= num_obs
+        loss += 0.5 * (self.reg * np.sum(W1*W1) + self.reg * np.sum(W2*W2))
+
+        dscores = probs
+        dscores[range(num_obs), y] -= 1
+        dscores /= num_obs
+        
+        dW2 = np.dot(hidden1_activation.T, dscores)
+        db2 = np.sum(dscores, axis=0)
+        dhidden = np.dot(dscores, W2.T)
+        dhidden[hidden1_activation <= 0] = 0
+
+        dW1 = np.dot(X.T, dhidden)
+        db1 = np.sum(dhidden, axis=0)
+
+        dW2 += self.reg * W2
+        dW1 += self.reg * W1
+
+        grads['W1'] = dW1
+        grads['W2'] = dW2
+        grads['b1'] = db1
+        grads['b2'] = db2
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -163,7 +206,14 @@ class FullyConnectedNet(object):
         # beta2, etc. Scale parameters should be initialized to one and shift      #
         # parameters should be initialized to zero.                                #
         ############################################################################
-        pass
+
+        layer_dims = [input_dim] + hidden_dims + [num_classes]
+
+        for idx, dim in enumerate(layer_dims[:-1]):
+            self.params['W'+str(idx+1)] = np.random.normal(scale=weight_scale,
+                size=[dim, layer_dims[idx+1]])
+            self.params['b'+str(idx+1)] = np.zeros(shape=layer_dims[idx+1])
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -221,7 +271,27 @@ class FullyConnectedNet(object):
         # self.bn_params[1] to the forward pass for the second batch normalization #
         # layer, etc.                                                              #
         ############################################################################
-        pass
+
+        for hidden_layer_idx in range(1, self.num_layers):
+            W_hidden = self.params['W'+str(hidden_layer_idx)]
+            b_hidden = self.params['b'+str(hidden_layer_idx)]
+
+            if hidden_layer_idx == 1:
+                hidden_out = X.dot(W_hidden) + b_hidden
+                hidden_out_bn = hidden_out  # batch norm
+                hidden_out_activated = np.maximum(0, hidden_out_bn)
+                hidden_out_dropped = hidden_out_activated   # drop out
+            else:
+                hidden_out = hidden_out_dropped.dot(W_hidden) + b_hidden
+                hidden_out_bn = hidden_out  # batch norm
+                hidden_out_activated = np.maximum(0, hidden_out_bn)
+                hidden_out_dropped = hidden_out_activated   # drop out
+
+        W_out = self.params['W'+str(self.num_layers)]
+        b_out = self.params['b'+str(self.num_layers)]
+        output = hidden_out_dropped.dot(W_out) + b_out
+        scores = output
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -244,7 +314,17 @@ class FullyConnectedNet(object):
         # automated tests, make sure that your L2 regularization includes a factor #
         # of 0.5 to simplify the expression for the gradient.                      #
         ############################################################################
-        pass
+
+        scores_exp = np.exp(scores)
+        scores_probs = scores_exp / scores_exp.sum(axis=1, keepdims=True)
+        scores_probs_correct = scores_probs[range(X.shape[0]), y]
+        output_neg_logprobs = -np.log(scores_probs_correct)
+        loss = output_neg_logprobs.sum() / X.shape[0]
+
+        for weight_idx in range(1, self.num_layers+1):
+            weight = self.params['W'+str(weight_idx)]
+            loss += 0.5 * self.reg * np.sum(weight*weight)
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
