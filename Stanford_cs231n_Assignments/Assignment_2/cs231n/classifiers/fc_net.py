@@ -272,7 +272,10 @@ class FullyConnectedNet(object):
         # layer, etc.                                                              #
         ############################################################################
 
+        X = X.reshape([X.shape[0], -1])
+
         hidden_out_dict = {}
+        bn_cache_dict = {}
 
         for hidden_layer_idx in range(1, self.num_layers):
             W_hidden = self.params['W'+str(hidden_layer_idx)]
@@ -280,13 +283,38 @@ class FullyConnectedNet(object):
 
             if hidden_layer_idx == 1:
                 hidden_out = X.dot(W_hidden) + b_hidden
-                hidden_out_bn = hidden_out  # batch norm
+
+                # batch norm
+                if self.use_batchnorm:
+                    self.bn_params[hidden_layer_idx-1]['gamma'+str(hidden_layer_idx)] = np.ones(hidden_out.shape[1])
+                    self.bn_params[hidden_layer_idx-1]['beta'+str(hidden_layer_idx)] = np.zeros(hidden_out.shape[1])
+                    hidden_out_bn, cache = batchnorm_forward(
+                        hidden_out, self.bn_params[hidden_layer_idx-1]['gamma'+str(hidden_layer_idx)], 
+                        self.bn_params[hidden_layer_idx-1]['beta'+str(hidden_layer_idx)], 
+                        self.bn_params[hidden_layer_idx-1])
+                    bn_cache_dict[hidden_layer_idx] = cache
+                else:
+                    hidden_out_bn = hidden_out
+
                 hidden_out_activated = np.maximum(0, hidden_out_bn)
                 hidden_out_dropped = hidden_out_activated   # drop out
                 hidden_out_dict[hidden_layer_idx] = hidden_out_dropped
+
             else:
                 hidden_out = hidden_out_dropped.dot(W_hidden) + b_hidden
-                hidden_out_bn = hidden_out  # batch norm
+
+                # batch norm
+                if self.use_batchnorm:
+                    self.bn_params[hidden_layer_idx-1]['gamma'+str(hidden_layer_idx)] = np.ones(hidden_out.shape[1])
+                    self.bn_params[hidden_layer_idx-1]['beta'+str(hidden_layer_idx)] = np.zeros(hidden_out.shape[1])
+                    hidden_out_bn, cache = batchnorm_forward(
+                        hidden_out, self.bn_params[hidden_layer_idx-1]['gamma'+str(hidden_layer_idx)], 
+                        self.bn_params[hidden_layer_idx-1]['beta'+str(hidden_layer_idx)], 
+                        self.bn_params[hidden_layer_idx-1])
+                    bn_cache_dict[hidden_layer_idx] = cache
+                else:
+                    hidden_out_bn = hidden_out
+
                 hidden_out_activated = np.maximum(0, hidden_out_bn)
                 hidden_out_dropped = hidden_out_activated   # drop out
                 hidden_out_dict[hidden_layer_idx] = hidden_out_dropped
@@ -336,15 +364,30 @@ class FullyConnectedNet(object):
                 grads['W'+str(layer_idx)] = np.dot(
                     hidden_out_dict[layer_idx-1].T, dscores) + self.reg * self.params['W'+str(layer_idx)]
                 grads['b'+str(layer_idx)] = np.sum(dscores, axis=0)
+
             elif (layer_idx != 1) & (layer_idx < self.num_layers):
                 dscores = np.dot(dscores, self.params['W'+str(layer_idx+1)].T)
                 dscores[hidden_out_dict[layer_idx] <= 0] = 0
+
+                # batch norm backward
+                if self.use_batchnorm:
+                    dscores, dgamma, dbeta = batchnorm_backward(dscores, bn_cache_dict[layer_idx])
+                    self.bn_params[layer_idx-1]['gamma'+str(layer_idx)] += dgamma
+                    self.bn_params[layer_idx-1]['beta'+str(layer_idx)] += dbeta
+
                 grads['W'+str(layer_idx)] = np.dot(
                     hidden_out_dict[layer_idx-1].T, dscores) + self.reg * self.params['W'+str(layer_idx)]
                 grads['b'+str(layer_idx)] = np.sum(dscores, axis=0)
             else:
                 dscores = np.dot(dscores, self.params['W'+str(layer_idx+1)].T)
                 dscores[hidden_out_dict[layer_idx] <= 0] = 0
+
+                # batch norm backward
+                if self.use_batchnorm:
+                    dscores, dgamma, dbeta = batchnorm_backward(dscores, bn_cache_dict[layer_idx])
+                    self.bn_params[layer_idx-1]['gamma'+str(layer_idx)] += dgamma
+                    self.bn_params[layer_idx-1]['beta'+str(layer_idx)] += dbeta
+
                 grads['W'+str(layer_idx)] = np.dot(
                     X.T, dscores) + self.reg * self.params['W'+str(layer_idx)]
                 grads['b'+str(layer_idx)] = np.sum(dscores, axis=0)
