@@ -282,8 +282,13 @@ def batchnorm_backward_alt(dout, cache):
     # single statement; our implementation fits on a single 80-character line.#
     ###########################################################################
 
-    pass
+    dx_norm = dout * cache[1]
 
+    dx = (1 / dout.shape[0]) * cache[3] * (dout.shape[0]*dx_norm - np.sum(
+        dx_norm, axis=0) - cache[0]*np.sum(
+            dx_norm*cache[0], axis=0))
+    dbeta = np.sum(dout, axis=0)
+    dgamma = np.sum(cache[0]*dout, axis=0)
 
     ###########################################################################
     #                             END OF YOUR CODE                            #
