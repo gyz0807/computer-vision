@@ -276,6 +276,7 @@ class FullyConnectedNet(object):
 
         hidden_out_dict = {}
         bn_cache_dict = {}
+        dropout_cache_dict = {}
 
         for hidden_layer_idx in range(1, self.num_layers):
             W_hidden = self.params['W'+str(hidden_layer_idx)]
@@ -297,7 +298,14 @@ class FullyConnectedNet(object):
                     hidden_out_bn = hidden_out
 
                 hidden_out_activated = np.maximum(0, hidden_out_bn)
-                hidden_out_dropped = hidden_out_activated   # drop out
+
+                # drop out
+                if self.use_dropout:
+                    hidden_out_dropped, dropout_cache = dropout_forward(hidden_out_activated, self.dropout_param)
+                    dropout_cache_dict[hidden_layer_idx] = dropout_cache
+                else:
+                    hidden_out_dropped = hidden_out_activated
+
                 hidden_out_dict[hidden_layer_idx] = hidden_out_dropped
 
             else:
@@ -316,7 +324,14 @@ class FullyConnectedNet(object):
                     hidden_out_bn = hidden_out
 
                 hidden_out_activated = np.maximum(0, hidden_out_bn)
-                hidden_out_dropped = hidden_out_activated   # drop out
+
+                # drop out
+                if self.use_dropout:
+                    hidden_out_dropped, dropout_cache = dropout_forward(hidden_out_activated, self.dropout_param)
+                    dropout_cache_dict[hidden_layer_idx] = dropout_cache
+                else:
+                    hidden_out_dropped = hidden_out_activated
+
                 hidden_out_dict[hidden_layer_idx] = hidden_out_dropped
 
         W_out = self.params['W'+str(self.num_layers)]
@@ -366,7 +381,13 @@ class FullyConnectedNet(object):
                 grads['b'+str(layer_idx)] = np.sum(dscores, axis=0)
 
             elif (layer_idx != 1) & (layer_idx < self.num_layers):
+
                 dscores = np.dot(dscores, self.params['W'+str(layer_idx+1)].T)
+
+                # dropout backward
+                if self.use_dropout:
+                    dscores = dropout_backward(dscores, dropout_cache_dict[layer_idx])
+
                 dscores[hidden_out_dict[layer_idx] <= 0] = 0
 
                 # batch norm backward
@@ -379,7 +400,13 @@ class FullyConnectedNet(object):
                     hidden_out_dict[layer_idx-1].T, dscores) + self.reg * self.params['W'+str(layer_idx)]
                 grads['b'+str(layer_idx)] = np.sum(dscores, axis=0)
             else:
+
                 dscores = np.dot(dscores, self.params['W'+str(layer_idx+1)].T)
+
+                # dropout backward
+                if self.use_dropout:
+                    dscores = dropout_backward(dscores, dropout_cache_dict[layer_idx])
+                    
                 dscores[hidden_out_dict[layer_idx] <= 0] = 0
 
                 # batch norm backward
