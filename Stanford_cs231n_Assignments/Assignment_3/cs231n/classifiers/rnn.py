@@ -137,7 +137,25 @@ class CaptioningRNN(object):
         # defined above to store loss and gradients; grads[k] should give the      #
         # gradients for self.params[k].                                            #
         ############################################################################
-        pass
+        
+        N, H = features.shape
+        _, T = captions_in.shape
+        V, D = W_embed.shape
+
+        hidden_init = features.dot(W_proj) + b_proj # (N, H)
+        caption_vect, embedding_cache = word_embedding_forward(captions_in, W_embed) # (N, T, D)
+
+        if self.cell_type == 'rnn':
+          h_next, rnn_cache = rnn_forward(caption_vect, hidden_init, Wx, Wh, b) # (N, T, H)
+          affine_out, affine_cache = temporal_affine_forward(h_next, W_vocab, b_vocab) # (N, T, V)
+          loss, daffine_out = temporal_softmax_loss(affine_out, captions_out, mask)
+
+          dh_next, grads['W_vocab'], grads['b_vocab'] = temporal_affine_backward(daffine_out, affine_cache)
+          dx, dh_init, grads['Wx'], grads['Wh'], grads['b'] = rnn_backward(dh_next, rnn_cache)
+          grads['W_embed'] = word_embedding_backward(dx, embedding_cache)
+          grads['W_proj'] = features.T.dot(dh_init)
+          grads['b_proj'] = dh_init.sum(axis=0)
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -199,7 +217,28 @@ class CaptioningRNN(object):
         # functions; you'll need to call rnn_step_forward or lstm_step_forward in #
         # a loop.                                                                 #
         ###########################################################################
-        pass
+        
+        captions[:, 0] = self._start
+        T = max_length - 1
+
+        if self.cell_type == 'rnn':
+          
+          for obs in range(N):
+            for timestep in range(T):
+              if timestep == 0:
+                features_obs = features[obs, :] # (1, input_dim)
+                hidden_init = features_obs.dot(W_proj) + b_proj # (1, H)
+                caption_vect = W_embed[captions[obs, timestep], :] # (1, D)
+                h = np.tanh(caption_vect.dot(Wx) + hidden_init.dot(Wh) + b) # (1, H)
+                scores = h.dot(W_vocab) + b_vocab # (1, D)
+                captions[obs, timestep+1] = np.argmax(scores)
+              else:
+                h_prev = h.copy()
+                caption_vect = W_embed[captions[obs, timestep], :] # (1, D)
+                h = np.tanh(caption_vect.dot(Wx) + h_prev.dot(Wh) + b) # (1, H)
+                scores = h.dot(W_vocab) + b_vocab # (1, D)
+                captions[obs, timestep+1] = np.argmax(scores)
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
