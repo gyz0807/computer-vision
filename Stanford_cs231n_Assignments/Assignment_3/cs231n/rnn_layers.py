@@ -291,7 +291,30 @@ def lstm_step_forward(x, prev_h, prev_c, Wx, Wh, b):
     # TODO: Implement the forward pass for a single timestep of an LSTM.        #
     # You may want to use the numerically stable sigmoid implementation above.  #
     #############################################################################
-    pass
+    
+    _, H = prev_h.shape
+    activation = x.dot(Wx) + prev_h.dot(Wh) + b # (N, 4H)
+
+    input_gate_activation = activation[:, :(H)]
+    input_gate = sigmoid(input_gate_activation)
+
+    forget_gate_activation = activation[:, H:(2*H)]
+    forget_gate = sigmoid(forget_gate_activation)
+
+    output_gate_activation = activation[:, (2*H):(3*H)]
+    output_gate = sigmoid(output_gate_activation)
+
+    gate_gate_activation = activation[:, (3*H):(4*H)]
+    gate_gate = np.tanh(gate_gate_activation)
+
+    next_c = prev_c * forget_gate + input_gate * gate_gate
+    tanh_next_c = np.tanh(next_c)
+    next_h = output_gate * tanh_next_c
+
+    cache = (prev_h, output_gate, next_c, forget_gate, prev_c, gate_gate, input_gate,
+        Wx, forget_gate_activation, input_gate_activation, gate_gate_activation,
+        output_gate_activation, x, activation, Wh)
+
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
@@ -323,7 +346,39 @@ def lstm_step_backward(dnext_h, dnext_c, cache):
     # HINT: For sigmoid and tanh you can compute local derivatives in terms of  #
     # the output value from the nonlinearity.                                   #
     #############################################################################
-    pass
+
+    prev_h, output_gate, next_c, forget_gate, prev_c, gate_gate, input_gate, \
+        Wx, forget_gate_activation, input_gate_activation, gate_gate_activation, \
+        output_gate_activation, x, activation, Wh = cache
+    _, H = prev_h.shape
+
+    dstep1 = output_gate * dnext_h
+    dstep2 = dstep1 * (1 - np.tanh(next_c)**2)
+    dstep3 = dstep2 + dnext_c
+    dprev_c = forget_gate * dstep3
+    dstep4 = np.tanh(next_c) * dnext_h
+    dstep5 = prev_c * dstep3
+    dstep6 = gate_gate * dstep3
+    dstep7 = input_gate * dstep3
+    dstep8 = sigmoid(forget_gate_activation) * (1 - sigmoid(forget_gate_activation)) * dstep5
+    dstep9 = sigmoid(input_gate_activation) * (1 - sigmoid(input_gate_activation)) * dstep6
+    dstep10 = (1 - np.tanh(gate_gate_activation)**2) * dstep7
+    dstep11 = sigmoid(output_gate_activation) * (1 - sigmoid(output_gate_activation)) * dstep4
+
+    dactivation = np.zeros_like(activation)
+    dactivation[:, :(H)] = dstep9
+    dactivation[:, H:(2*H)] = dstep8
+    dactivation[:, (2*H):(3*H)] = dstep11
+    dactivation[:, (3*H):(4*H)] = dstep10
+
+    dWx = x.T.dot(dactivation)
+    dx = dactivation.dot(Wx.T)
+
+    dWh = prev_h.T.dot(dactivation)
+    dprev_h = dactivation.dot(Wh.T)
+
+    db = dactivation.sum(axis=0)
+
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
