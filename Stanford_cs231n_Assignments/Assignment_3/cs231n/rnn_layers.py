@@ -167,7 +167,7 @@ def rnn_backward(dh, cache):
 
         dh_t = dh[:, time_step, :] + dprev_h_t
         cache_t = cache_hist[time_step]
-        
+
         dx_t, dprev_h_t, dWx_t, dWh_t, db_t = rnn_step_backward(dh_t, cache_t)
 
         dx[:, time_step, :] = dx_t
@@ -413,7 +413,22 @@ def lstm_forward(x, h0, Wx, Wh, b):
     # TODO: Implement the forward pass for an LSTM over an entire timeseries.   #
     # You should use the lstm_step_forward function that you just defined.      #
     #############################################################################
-    pass
+    
+    N, T, _ = x.shape
+    _, H = h0.shape
+
+    next_c = np.zeros_like(h0)
+    next_h = h0
+    h = np.zeros([N, T, H])
+
+    cache = {}
+
+    for timestep in range(T):
+        x_t = x[:, timestep, :]
+        next_h, next_c, cache_t = lstm_step_forward(x_t, next_h, next_c, Wx, Wh, b)
+        h[:, timestep, :] = next_h
+        cache[timestep] = cache_t
+
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
@@ -441,7 +456,24 @@ def lstm_backward(dh, cache):
     # TODO: Implement the backward pass for an LSTM over an entire timeseries.  #
     # You should use the lstm_step_backward function that you just defined.     #
     #############################################################################
-    pass
+
+    N, T, H = dh.shape
+
+    # dh_next and dc_next for the first timestep in backward step is zero, because
+    # at the last timestep in the forward propagation, h and c won't be used in the
+    # next timestep
+    dnext_h = np.zeros([N, H])
+    dnext_c = np.zeros_like(dnext_h)
+
+    dx, dprev_h, dprev_c, dWx, dWh, db = lstm_step_backward(dnext_h, dnext_c, cache[T-1])
+    dnext_h = dh[:, T-1, :] + dprev_h
+    dnext_c += dprev_c
+
+    for timestep in range(T)[::-1]:
+        dx, dprev_h, dprev_c, dWx, dWh, db = lstm_step_backward(dnext_h, dnext_c, cache[timestep])
+    
+    dh0 = dprev_h
+
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
