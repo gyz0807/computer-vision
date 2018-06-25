@@ -465,13 +465,32 @@ def lstm_backward(dh, cache):
     dnext_h = np.zeros([N, H])
     dnext_c = np.zeros_like(dnext_h)
 
-    dx, dprev_h, dprev_c, dWx, dWh, db = lstm_step_backward(dnext_h, dnext_c, cache[T-1])
-    dnext_h = dh[:, T-1, :] + dprev_h
-    dnext_c += dprev_c
+    for timestep in range(0, T)[::-1]:
+        if timestep == T-1:
+            dnext_h = dh[:, timestep, :]
+            dx_t, dprev_h, dprev_c, dWx_t, dWh_t, db_t = lstm_step_backward(dnext_h, dnext_c, cache[timestep])
 
-    for timestep in range(T)[::-1]:
-        dx, dprev_h, dprev_c, dWx, dWh, db = lstm_step_backward(dnext_h, dnext_c, cache[timestep])
-    
+            D, H = dWx_t.shape
+            H /= 4
+            dx = np.zeros([N, T, D])
+            dWx = np.zeros_like(dWx_t)
+            dWh = np.zeros_like(dWh_t)
+            db = np.zeros_like(db_t)
+
+            dx[:, timestep, :] = dx_t
+            dWx += dWx_t
+            dWh += dWh_t
+            db += db_t
+        else:
+            dnext_h = dprev_h + dh[:, timestep, :]
+            dnext_c = dprev_c
+            dx_t, dprev_h, dprev_c, dWx_t, dWh_t, db_t = lstm_step_backward(dnext_h, dnext_c, cache[timestep])
+
+            dx[:, timestep, :] = dx_t
+            dWx += dWx_t
+            dWh += dWh_t
+            db += db_t
+
     dh0 = dprev_h
 
     ##############################################################################
