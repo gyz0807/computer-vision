@@ -156,6 +156,17 @@ class CaptioningRNN(object):
           grads['W_proj'] = features.T.dot(dh_init)
           grads['b_proj'] = dh_init.sum(axis=0)
 
+        elif self.cell_type == 'lstm':
+          h_next, lstm_cache = lstm_forward(caption_vect, hidden_init, Wx, Wh, b)
+          affine_out, affine_cache = temporal_affine_forward(h_next, W_vocab, b_vocab) # (N, T, V)
+          loss, daffine_out = temporal_softmax_loss(affine_out, captions_out, mask)
+
+          dh_next, grads['W_vocab'], grads['b_vocab'] = temporal_affine_backward(daffine_out, affine_cache)
+          dx, dh_init, grads['Wx'], grads['Wh'], grads['b'] = lstm_backward(dh_next, lstm_cache)
+          grads['W_embed'] = word_embedding_backward(dx, embedding_cache)
+          grads['W_proj'] = features.T.dot(dh_init)
+          grads['b_proj'] = dh_init.sum(axis=0)
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -237,6 +248,23 @@ class CaptioningRNN(object):
                 caption_vect = W_embed[captions[obs, timestep], :] # (1, D)
                 h = np.tanh(caption_vect.dot(Wx) + h_prev.dot(Wh) + b) # (1, H)
                 scores = h.dot(W_vocab) + b_vocab # (1, D)
+                captions[obs, timestep+1] = np.argmax(scores)
+
+        elif self.cell_type == 'lstm':
+
+          for obs in range(N):
+            for timestep in range(T):
+              if timestep == 0:
+                cell_init = 0
+                hidden_init = features[obs][np.newaxis, :].dot(W_proj) + b_proj
+                caption_vect_t = W_embed[captions[obs, timestep], :]
+                h_next, c_next, _ = lstm_step_forward(caption_vect_t, hidden_init, cell_init, Wx, Wh, b)
+                scores = h_next.dot(W_vocab) + b_vocab
+                captions[obs, timestep+1] = np.argmax(scores)
+              else:
+                caption_vect_t = W_embed[captions[obs, timestep], :]
+                h_next, c_next, _ = lstm_step_forward(caption_vect_t, h_next, c_next, Wx, Wh, b)
+                scores = h_next.dot(W_vocab) + b_vocab
                 captions[obs, timestep+1] = np.argmax(scores)
 
         ############################################################################

@@ -167,7 +167,7 @@ def rnn_backward(dh, cache):
 
         dh_t = dh[:, time_step, :] + dprev_h_t
         cache_t = cache_hist[time_step]
-        
+
         dx_t, dprev_h_t, dWx_t, dWh_t, db_t = rnn_step_backward(dh_t, cache_t)
 
         dx[:, time_step, :] = dx_t
@@ -291,7 +291,30 @@ def lstm_step_forward(x, prev_h, prev_c, Wx, Wh, b):
     # TODO: Implement the forward pass for a single timestep of an LSTM.        #
     # You may want to use the numerically stable sigmoid implementation above.  #
     #############################################################################
-    pass
+    
+    _, H = prev_h.shape
+    activation = x.dot(Wx) + prev_h.dot(Wh) + b # (N, 4H)
+
+    input_gate_activation = activation[:, :(H)]
+    input_gate = sigmoid(input_gate_activation)
+
+    forget_gate_activation = activation[:, H:(2*H)]
+    forget_gate = sigmoid(forget_gate_activation)
+
+    output_gate_activation = activation[:, (2*H):(3*H)]
+    output_gate = sigmoid(output_gate_activation)
+
+    gate_gate_activation = activation[:, (3*H):(4*H)]
+    gate_gate = np.tanh(gate_gate_activation)
+
+    next_c = prev_c * forget_gate + input_gate * gate_gate
+    tanh_next_c = np.tanh(next_c)
+    next_h = output_gate * tanh_next_c
+
+    cache = (prev_h, output_gate, next_c, forget_gate, prev_c, gate_gate, input_gate,
+        Wx, forget_gate_activation, input_gate_activation, gate_gate_activation,
+        output_gate_activation, x, activation, Wh)
+
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
@@ -323,7 +346,39 @@ def lstm_step_backward(dnext_h, dnext_c, cache):
     # HINT: For sigmoid and tanh you can compute local derivatives in terms of  #
     # the output value from the nonlinearity.                                   #
     #############################################################################
-    pass
+
+    prev_h, output_gate, next_c, forget_gate, prev_c, gate_gate, input_gate, \
+        Wx, forget_gate_activation, input_gate_activation, gate_gate_activation, \
+        output_gate_activation, x, activation, Wh = cache
+    _, H = prev_h.shape
+
+    dstep1 = output_gate * dnext_h
+    dstep2 = dstep1 * (1 - np.tanh(next_c)**2)
+    dstep3 = dstep2 + dnext_c
+    dprev_c = forget_gate * dstep3
+    dstep4 = np.tanh(next_c) * dnext_h
+    dstep5 = prev_c * dstep3
+    dstep6 = gate_gate * dstep3
+    dstep7 = input_gate * dstep3
+    dstep8 = sigmoid(forget_gate_activation) * (1 - sigmoid(forget_gate_activation)) * dstep5
+    dstep9 = sigmoid(input_gate_activation) * (1 - sigmoid(input_gate_activation)) * dstep6
+    dstep10 = (1 - np.tanh(gate_gate_activation)**2) * dstep7
+    dstep11 = sigmoid(output_gate_activation) * (1 - sigmoid(output_gate_activation)) * dstep4
+
+    dactivation = np.zeros_like(activation)
+    dactivation[:, :(H)] = dstep9
+    dactivation[:, H:(2*H)] = dstep8
+    dactivation[:, (2*H):(3*H)] = dstep11
+    dactivation[:, (3*H):(4*H)] = dstep10
+
+    dWx = x.T.dot(dactivation)
+    dx = dactivation.dot(Wx.T)
+
+    dWh = prev_h.T.dot(dactivation)
+    dprev_h = dactivation.dot(Wh.T)
+
+    db = dactivation.sum(axis=0)
+
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
@@ -358,7 +413,22 @@ def lstm_forward(x, h0, Wx, Wh, b):
     # TODO: Implement the forward pass for an LSTM over an entire timeseries.   #
     # You should use the lstm_step_forward function that you just defined.      #
     #############################################################################
-    pass
+    
+    N, T, _ = x.shape
+    _, H = h0.shape
+
+    next_c = np.zeros_like(h0)
+    next_h = h0
+    h = np.zeros([N, T, H])
+
+    cache = {}
+
+    for timestep in range(T):
+        x_t = x[:, timestep, :]
+        next_h, next_c, cache_t = lstm_step_forward(x_t, next_h, next_c, Wx, Wh, b)
+        h[:, timestep, :] = next_h
+        cache[timestep] = cache_t
+
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
@@ -386,7 +456,43 @@ def lstm_backward(dh, cache):
     # TODO: Implement the backward pass for an LSTM over an entire timeseries.  #
     # You should use the lstm_step_backward function that you just defined.     #
     #############################################################################
-    pass
+
+    N, T, H = dh.shape
+
+    # dh_next and dc_next for the first timestep in backward step is zero, because
+    # at the last timestep in the forward propagation, h and c won't be used in the
+    # next timestep
+    dnext_h = np.zeros([N, H])
+    dnext_c = np.zeros_like(dnext_h)
+
+    for timestep in range(0, T)[::-1]:
+        if timestep == T-1:
+            dnext_h = dh[:, timestep, :]
+            dx_t, dprev_h, dprev_c, dWx_t, dWh_t, db_t = lstm_step_backward(dnext_h, dnext_c, cache[timestep])
+
+            D, H = dWx_t.shape
+            H /= 4
+            dx = np.zeros([N, T, D])
+            dWx = np.zeros_like(dWx_t)
+            dWh = np.zeros_like(dWh_t)
+            db = np.zeros_like(db_t)
+
+            dx[:, timestep, :] = dx_t
+            dWx += dWx_t
+            dWh += dWh_t
+            db += db_t
+        else:
+            dnext_h = dprev_h + dh[:, timestep, :]
+            dnext_c = dprev_c
+            dx_t, dprev_h, dprev_c, dWx_t, dWh_t, db_t = lstm_step_backward(dnext_h, dnext_c, cache[timestep])
+
+            dx[:, timestep, :] = dx_t
+            dWx += dWx_t
+            dWh += dWh_t
+            db += db_t
+
+    dh0 = dprev_h
+
     ##############################################################################
     #                               END OF YOUR CODE                             #
     ##############################################################################
